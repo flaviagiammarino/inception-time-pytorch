@@ -33,7 +33,7 @@ model = InceptionTime(
 model.fit(
     learning_rate=0.001,
     batch_size=64,
-    epochs=100,
+    epochs=50,
     verbose=True,
 )
 

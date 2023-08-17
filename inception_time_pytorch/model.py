@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from sklearn.utils.class_weight import compute_class_weight
 
 from inception_time_pytorch.modules import InceptionModel
 
@@ -38,12 +39,28 @@ class InceptionTime():
             The number of models.
         '''
         
+        # Check if GPU is available.
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        
         # Calculate the scaling parameters.
         mu = np.nanmean(x, axis=0, keepdims=True)
         sigma = np.nanstd(x, axis=0, keepdims=True)
+
+        # Calculate the length of the time series.
+        input_size = x.shape[1]
         
-        # Check if GPU is available.
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        # Define the label mappings.
+        self.id2label = {idx: label for idx, label in enumerate(np.sort(np.unique(y)))}
+        self.label2id = {label: idx for idx, label in enumerate(np.sort(np.unique(y)))}
+
+        # Encode the labels.
+        y = np.array([self.label2id[i] for i in y])
+        
+        # Calculate the number of classes.
+        num_classes = len(np.unique(y))
+        
+        # Calculate the class weights.
+        self.weight = compute_class_weight(class_weight="balanced", classes=np.sort(np.unique(y)), y=y)
         
         # Save the data.
         self.x = torch.from_numpy(x).float().to(self.device)
@@ -52,8 +69,8 @@ class InceptionTime():
         # Build and save the models.
         self.models = [
             InceptionModel(
-                input_size=x.shape[1],
-                num_classes=len(np.unique(y)),
+                input_size=input_size,
+                num_classes=num_classes,
                 filters=filters,
                 depth=depth,
                 mu=mu,
@@ -99,10 +116,9 @@ class InceptionTime():
             optimizer = torch.optim.Adam(self.models[m].parameters(), lr=learning_rate)
             
             # Define the loss function.
-            loss_fn = torch.nn.CrossEntropyLoss()
+            loss_fn = torch.nn.CrossEntropyLoss(weight=torch.from_numpy(self.weight).float().to(self.device))
             
             # Train the model.
-            print('-----------------------------------------')
             print(f'Training model {m + 1} on {self.device}.')
             self.models[m].train(True)
             for epoch in range(epochs):
@@ -142,6 +158,6 @@ class InceptionTime():
             p = torch.concat([torch.nn.functional.softmax(model(torch.from_numpy(x).float().to(self.device).float()), dim=-1).unsqueeze(-1) for model in self.models], dim=-1)
         
         # Get the predicted labels.
-        y = p.mean(-1).argmax(-1).detach().cpu().numpy()
+        y = np.array([self.id2label[int(i)] for i in p.mean(-1).argmax(-1).detach().cpu().numpy().flatten()])
 
         return y

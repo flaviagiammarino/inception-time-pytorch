@@ -23,7 +23,7 @@ def plot(x, y):
         Line chart of time series, one subplot for each cluster.
     '''
     
-    # extract the distinct clusters
+    # extract the unique classes
     c = np.unique(y).astype(int)
     
     fig = make_subplots(
@@ -62,7 +62,7 @@ def plot(x, y):
     
     for i in range(len(c)):
         
-        # extract the time series in the ith cluster
+        # extract the time series in the ith class
         x_ = x[y == c[i], :, :]
         x_ = np.reshape(x_, (x_.shape[0] * x_.shape[1], x_.shape[2]))
         

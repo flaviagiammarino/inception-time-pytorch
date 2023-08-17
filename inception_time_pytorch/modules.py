@@ -6,11 +6,11 @@ from collections import OrderedDict
 warnings.filterwarnings('ignore', category=UserWarning, module='torch.nn')
 
 
-class InceptionModule(torch.nn.Module):
+class Inception(torch.nn.Module):
     def __init__(self, input_size, filters):
-        super(InceptionModule, self).__init__()
+        super(Inception, self).__init__()
         
-        self.bottleneck = torch.nn.Conv1d(
+        self.bottleneck1 = torch.nn.Conv1d(
             in_channels=input_size,
             out_channels=filters,
             kernel_size=1,
@@ -52,7 +52,7 @@ class InceptionModule(torch.nn.Module):
             padding=1,
         )
         
-        self.conv01 = torch.nn.Conv1d(
+        self.bottleneck2 = torch.nn.Conv1d(
             in_channels=input_size,
             out_channels=filters,
             kernel_size=1,
@@ -61,41 +61,26 @@ class InceptionModule(torch.nn.Module):
             bias=False
         )
         
-        self.bn = torch.nn.BatchNorm1d(
+        self.batch_norm = torch.nn.BatchNorm1d(
             num_features=4 * filters
         )
 
     def forward(self, x):
-        x0 = self.bottleneck(x)
+        x0 = self.bottleneck1(x)
         x1 = self.conv10(x0)
         x2 = self.conv20(x0)
         x3 = self.conv40(x0)
-        x4 = self.conv01(self.max_pool(x))
+        x4 = self.bottleneck2(self.max_pool(x))
         y = torch.concat([x1, x2, x3, x4], dim=1)
-        y = torch.nn.functional.relu(self.bn(y))
+        y = torch.nn.functional.relu(self.batch_norm(y))
         return y
 
 
-class InceptionBlock(torch.nn.Module):
+class Residual(torch.nn.Module):
     def __init__(self, input_size, filters):
-        super(InceptionBlock, self).__init__()
+        super(Residual, self).__init__()
         
-        self.module1 = InceptionModule(
-            input_size=input_size,
-            filters=filters,
-        )
-        
-        self.module2 = InceptionModule(
-            input_size=4 * filters,
-            filters=filters,
-        )
-        
-        self.module3 = InceptionModule(
-            input_size=4 * filters,
-            filters=filters,
-        )
-
-        self.conv = torch.nn.Conv1d(
+        self.bottleneck = torch.nn.Conv1d(
             in_channels=input_size,
             out_channels=4 * filters,
             kernel_size=1,
@@ -104,15 +89,12 @@ class InceptionBlock(torch.nn.Module):
             bias=False
         )
 
-        self.bn = torch.nn.BatchNorm1d(
+        self.batch_norm = torch.nn.BatchNorm1d(
             num_features=4 * filters
         )
     
-    def forward(self, x):
-        y = self.module1(x)
-        y = self.module2(y)
-        y = self.module3(y)
-        y = y + self.bn(self.conv(x))
+    def forward(self, x, y):
+        y = y + self.batch_norm(self.bottleneck(x))
         y = torch.nn.functional.relu(y)
         return y
 
@@ -141,20 +123,44 @@ class Lambda(torch.nn.Module):
 class InceptionModel(torch.nn.Module):
     def __init__(self, input_size, num_classes, filters, depth, mu, sigma, seed):
         super(InceptionModel, self).__init__()
+
+        self.input_size = input_size
+        self.num_classes = num_classes
+        self.filters = filters
+        self.depth = depth
+        self.mu = mu
+        self.sigma = sigma
+        self.seed = seed
         
         modules = OrderedDict()
         modules['processor'] = Processor(mu, sigma)
-        for i in range(depth):
-            modules[f'block_{i}'] = InceptionBlock(
-                input_size=input_size if i == 0 else 4 * filters,
+        
+        for d in range(depth):
+            modules[f'inception_{d}'] = Inception(
+                input_size=input_size if d == 0 else 4 * filters,
                 filters=filters,
             )
+            if d % 3 == 2:
+                modules[f'residual_{d}'] = Residual(
+                    input_size=input_size if d == 2 else 4 * filters,
+                    filters=filters,
+                )
+        
         modules['avg_pool'] = Lambda(f=lambda x: torch.mean(x, dim=-1))
         modules['linear'] = torch.nn.Linear(in_features=4 * filters, out_features=num_classes)
+        
         self.model = init_params(model=torch.nn.Sequential(modules), seed=seed)
-    
+
     def forward(self, x):
-        return self.model(x)
+        x = self.model.get_submodule('processor')(x)
+        for d in range(self.depth):
+            y = self.model.get_submodule(f'inception_{d}')(x if d == 0 else y)
+            if d % 3 == 2:
+                y = self.model.get_submodule(f'residual_{d}')(x, y)
+                x = y
+        y = self.model.get_submodule('avg_pool')(y)
+        y = self.model.get_submodule('linear')(y)
+        return y
 
 
 def set_seed(seed):
