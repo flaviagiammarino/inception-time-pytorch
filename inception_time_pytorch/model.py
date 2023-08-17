@@ -78,6 +78,9 @@ class InceptionTime():
                 seed=seed,
             ).to(self.device) for seed in range(models)
         ]
+        
+        if torch.cuda.device_count() > 1:
+            self.models = [torch.nn.DataParallel(model).to(self.device) for model in self.models]
     
     def fit(self,
             learning_rate,
@@ -119,7 +122,11 @@ class InceptionTime():
             loss_fn = torch.nn.CrossEntropyLoss(weight=torch.from_numpy(self.weight).float().to(self.device))
             
             # Train the model.
-            print(f'Training model {m + 1} on {self.device}.')
+            if torch.cuda.device_count() > 1:
+                print(f'Training model {m + 1} on CUDA {", ".join([str(d) for d in self.models[m].device_ids])}.')
+            else:
+                print(f'Training model {m + 1} on {self.device}.')
+        
             self.models[m].train(True)
             for epoch in range(epochs):
                 for features, target in dataset:
