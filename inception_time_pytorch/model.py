@@ -16,8 +16,8 @@ class InceptionTime():
         
         '''
         Implementation of InceptionTime model introduced in Ismail Fawaz, H., Lucas, B., Forestier, G., Pelletier,
-        C., Schmidt, D.F., Weber, J., Webb, G.I., Idoumghar, L., Muller, P.A. and Petitjean, F., 2020. Inceptiontime:
-        Finding alexnet for time series classification. Data Mining and Knowledge Discovery, 34(6), pp.1936-1962.
+        C., Schmidt, D.F., Weber, J., Webb, G.I., Idoumghar, L., Muller, P.A. and Petitjean, F., 2020. InceptionTime:
+        Finding AlexNet for Time Series Classification. Data Mining and Knowledge Discovery, 34(6), pp.1936-1962.
 
         Parameters:
         __________________________________
@@ -42,25 +42,10 @@ class InceptionTime():
         # Check if GPU is available.
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         
-        # Calculate the scaling parameters.
-        mu = np.nanmean(x, axis=0, keepdims=True)
-        sigma = np.nanstd(x, axis=0, keepdims=True)
-
-        # Calculate the length of the time series.
-        input_size = x.shape[1]
-        
-        # Define the label mappings.
-        self.id2label = {idx: label for idx, label in enumerate(np.sort(np.unique(y)))}
-        self.label2id = {label: idx for idx, label in enumerate(np.sort(np.unique(y)))}
-
-        # Encode the labels.
-        y = np.array([self.label2id[i] for i in y])
-        
-        # Calculate the number of classes.
-        num_classes = len(np.unique(y))
-        
-        # Calculate the class weights.
-        self.weight = compute_class_weight(class_weight="balanced", classes=np.sort(np.unique(y)), y=y)
+        # Scale the data.
+        self.mu = np.nanmean(x, axis=0, keepdims=True)
+        self.sigma = np.nanstd(x, axis=0, keepdims=True)
+        x = (x - self.mu) / self.sigma
         
         # Save the data.
         self.x = torch.from_numpy(x).float().to(self.device)
@@ -69,18 +54,12 @@ class InceptionTime():
         # Build and save the models.
         self.models = [
             InceptionModel(
-                input_size=input_size,
-                num_classes=num_classes,
+                input_size=x.shape[1],
+                num_classes=len(np.unique(y)),
                 filters=filters,
                 depth=depth,
-                mu=mu,
-                sigma=sigma,
-                seed=seed,
-            ).to(self.device) for seed in range(models)
+            ).to(self.device) for _ in range(models)
         ]
-        
-        if torch.cuda.device_count() > 1:
-            self.models = [torch.nn.DataParallel(model).to(self.device) for model in self.models]
     
     def fit(self,
             learning_rate,
@@ -119,14 +98,10 @@ class InceptionTime():
             optimizer = torch.optim.Adam(self.models[m].parameters(), lr=learning_rate)
             
             # Define the loss function.
-            loss_fn = torch.nn.CrossEntropyLoss(weight=torch.from_numpy(self.weight).float().to(self.device))
+            loss_fn = torch.nn.CrossEntropyLoss()
             
             # Train the model.
-            if torch.cuda.device_count() > 1:
-                print(f'Training model {m + 1} on CUDA {", ".join([str(d) for d in self.models[m].device_ids])}.')
-            else:
-                print(f'Training model {m + 1} on {self.device}.')
-        
+            print(f'Training model {m + 1} on {self.device}.')
             self.models[m].train(True)
             for epoch in range(epochs):
                 for features, target in dataset:
@@ -140,7 +115,6 @@ class InceptionTime():
                     print('epoch: {}, loss: {:,.6f}, accuracy: {:.6f}'.format(1 + epoch, loss, accuracy))
             self.models[m].train(False)
             print('-----------------------------------------')
-            
     
     def predict(self, x):
         
@@ -159,12 +133,15 @@ class InceptionTime():
         y: np.array.
             Predicted labels, array with shape (samples,) where samples is the number of time series.
         '''
-    
+
+        # Scale the data.
+        x = torch.from_numpy((x - self.mu) / self.sigma).float().to(self.device)
+        
         # Get the predicted probabilities.
         with torch.no_grad():
-            p = torch.concat([torch.nn.functional.softmax(model(torch.from_numpy(x).float().to(self.device).float()), dim=-1).unsqueeze(-1) for model in self.models], dim=-1)
+            p = torch.concat([torch.nn.functional.softmax(model(x), dim=-1).unsqueeze(-1) for model in self.models], dim=-1).mean(-1)
         
         # Get the predicted labels.
-        y = np.array([self.id2label[int(i)] for i in p.mean(-1).argmax(-1).detach().cpu().numpy().flatten()])
+        y = p.argmax(-1).detach().cpu().numpy().flatten()
 
         return y

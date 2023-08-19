@@ -1,10 +1,7 @@
 import torch
-import random
-import numpy as np
 import warnings
 from collections import OrderedDict
 warnings.filterwarnings('ignore', category=UserWarning, module='torch.nn')
-
 
 class Inception(torch.nn.Module):
     def __init__(self, input_size, filters):
@@ -99,17 +96,6 @@ class Residual(torch.nn.Module):
         return y
 
 
-class Processor(torch.nn.Module):
-    def __init__(self, mu, sigma):
-        super(Processor, self).__init__()
-        self.mu = torch.nn.Parameter(data=torch.tensor(mu).float(), requires_grad=False)
-        self.sigma = torch.nn.Parameter(data=torch.tensor(sigma).float(), requires_grad=False)
-    
-    def forward(self, x):
-        with torch.no_grad():
-            return (x - self.mu) / self.sigma
-
-
 class Lambda(torch.nn.Module):
     
     def __init__(self, f):
@@ -121,19 +107,15 @@ class Lambda(torch.nn.Module):
 
 
 class InceptionModel(torch.nn.Module):
-    def __init__(self, input_size, num_classes, filters, depth, mu, sigma, seed):
+    def __init__(self, input_size, num_classes, filters, depth):
         super(InceptionModel, self).__init__()
 
         self.input_size = input_size
         self.num_classes = num_classes
         self.filters = filters
         self.depth = depth
-        self.mu = mu
-        self.sigma = sigma
-        self.seed = seed
         
         modules = OrderedDict()
-        modules['processor'] = Processor(mu, sigma)
         
         for d in range(depth):
             modules[f'inception_{d}'] = Inception(
@@ -149,10 +131,9 @@ class InceptionModel(torch.nn.Module):
         modules['avg_pool'] = Lambda(f=lambda x: torch.mean(x, dim=-1))
         modules['linear'] = torch.nn.Linear(in_features=4 * filters, out_features=num_classes)
         
-        self.model = init_params(model=torch.nn.Sequential(modules), seed=seed)
+        self.model = torch.nn.Sequential(modules)
 
     def forward(self, x):
-        x = self.model.get_submodule('processor')(x)
         for d in range(self.depth):
             y = self.model.get_submodule(f'inception_{d}')(x if d == 0 else y)
             if d % 3 == 2:
@@ -161,29 +142,3 @@ class InceptionModel(torch.nn.Module):
         y = self.model.get_submodule('avg_pool')(y)
         y = self.model.get_submodule('linear')(y)
         return y
-
-
-def set_seed(seed):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-
-    
-def glorot_uniform(param):
-    fan_in, fan_out = torch.nn.init._calculate_fan_in_and_fan_out(param)
-    return torch.nn.init.uniform_(param, a=-np.sqrt(6 / (fan_in + fan_out)), b=np.sqrt(6 / (fan_in + fan_out)))
-
-
-def init_params(model, seed):
-    set_seed(seed)
-    state_dict = model.state_dict()
-    for param in state_dict:
-        if "Conv1d" in param or "linear" in param:
-            if "weight" in param:
-                state_dict[param] = glorot_uniform(state_dict[param])
-            elif "bias" in param:
-                state_dict[param] = torch.nn.init.zeros_(state_dict[param])
-    model.load_state_dict(state_dict)
-    return model
