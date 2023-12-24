@@ -20,7 +20,7 @@ def plot(x, y):
     Returns:
     __________________________________
     fig: go.Figure.
-        Line chart of time series, one subplot for each cluster.
+        Line chart of time series, one subplot for each class.
     '''
     
     # extract the unique classes
@@ -62,7 +62,7 @@ def plot(x, y):
     
     for i in range(len(c)):
         
-        # extract the time series in the ith class
+        # extract the time series in the i^th class
         x_ = x[y == c[i], :, :]
         x_ = np.reshape(x_, (x_.shape[0] * x_.shape[1], x_.shape[2]))
         
