@@ -2,10 +2,16 @@
 
 ![license](https://img.shields.io/github/license/flaviagiammarino/inception-time-pytorch)
 ![languages](https://img.shields.io/github/languages/top/flaviagiammarino/inception-time-pytorch)
+![stars](https://img.shields.io/github/stars/flaviagiammarino/inception-time-pytorch)
+![forks](https://img.shields.io/github/forks/flaviagiammarino/inception-time-pytorch)
 
 PyTorch implementation of multivariate time series classification model introduced in Ismail Fawaz, H., Lucas, B., Forestier, G., Pelletier, C., 
 Schmidt, D.F., Weber, J., Webb, G.I., Idoumghar, L., Muller, P.A. and Petitjean, F., 2020. InceptionTime:
 Finding AlexNet for Time Series Classification. *Data Mining and Knowledge Discovery*, 34(6), pp. 1936-1962.
+
+<img src=diagram.png style="width:90%;margin-top:30px;margin-bottom:25px"/>
+
+*Model architecture (source: [doi: 10.1007/s10618-020-00710-y](https://doi.org/10.1007/s10618-020-00710-y))*
 
 ## Dependencies
 ```bash
