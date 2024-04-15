@@ -9,10 +9,6 @@ PyTorch implementation of multivariate time series classification model introduc
 Schmidt, D.F., Weber, J., Webb, G.I., Idoumghar, L., Muller, P.A. and Petitjean, F., 2020. InceptionTime:
 Finding AlexNet for Time Series Classification. *Data Mining and Knowledge Discovery*, 34(6), pp. 1936-1962.
 
-<img src=diagram.png style="width:90%;margin-top:30px;margin-bottom:25px"/>
-
-*Model architecture (source: [doi: 10.1007/s10618-020-00710-y](https://doi.org/10.1007/s10618-020-00710-y))*
-
 ## Dependencies
 ```bash
 numpy==1.23.5
